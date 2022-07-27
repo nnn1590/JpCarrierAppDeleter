@@ -4,6 +4,7 @@ Implementation of CarrierAppDeleter(WPF) with WinForms
 
 ### Why WinForms?
 * Application should be multi-platform
+* Mono and .NET Core are open source multi-platform .NET implementation
 * .NET Core supports WPF/WinForms on Windows only
 * Currently(2022/7/27), Mono doesn't support WPF but WinForms
 
