@@ -381,6 +381,7 @@ namespace CarrierAppDeleter.Forms {
 				throw new InvalidOperationException($"appsCount({appsCount} and apps.Count()({apps.Count()}) doesn't match");
 			}
 			string device = GetSelectedDeviceSerial();
+			bool deviceSerialEmpty = string.IsNullOrEmpty(device) || string.IsNullOrWhiteSpace(device);
 			if (appsCount <= 0) {
 				ShowError("No applications checked. Please check at least one");
 				ResetToolStrip();
@@ -399,15 +400,23 @@ namespace CarrierAppDeleter.Forms {
 				{ AppAction.Enable, "Enabling" },
 				{ AppAction.Reinstall, "Reinstalling" }
 			};
-			Dictionary<AppAction, string> PastVerb = new Dictionary<AppAction, string>() {
+			Dictionary<AppAction, string> PastVerbA = new Dictionary<AppAction, string>() {
+				{ AppAction.Uninstall, "uninstalled" },
+				{ AppAction.Disable, "disabled" },
+				{ AppAction.Enable, "enabled" },
+				{ AppAction.Reinstall, "reinstalled" }
+			};
+			Dictionary<AppAction, string> PastVerbB = new Dictionary<AppAction, string>() {
 				{ AppAction.Uninstall, "uninstalled from" },
 				{ AppAction.Disable, "disabled in" },
 				{ AppAction.Enable, "enabled in" },
 				{ AppAction.Reinstall, "reinstalled to" }
 			};
+			Dictionary<AppAction, string> PastVerb = deviceSerialEmpty ? PastVerbA : PastVerbB;
 			string TextApplications(int count) => "application" + ((Math.Abs(count) == 1) ? "" : "s");
+			string deviceVisible = deviceSerialEmpty ? string.Empty : $" {device}";
 
-			if (MessageBox.Show($"Checked {appsCount} {TextApplications(appsCount)} will be {PastVerb[action]} {device}.\n" +
+			if (MessageBox.Show($"Checked {appsCount} {TextApplications(appsCount)} will be {PastVerb[action]}{deviceVisible}.\n" +
 				"Do you want to continue?", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes) {
 				toolStripProgressBar.Maximum = appsCount;
 				toolStripProgressBar.Style = ProgressBarStyle.Continuous;
@@ -426,7 +435,7 @@ namespace CarrierAppDeleter.Forms {
 				if (!string.IsNullOrEmpty(textBoxLog.Text)) AppendLog("===============\n");
 				DateTime dateTimeStart = DateTime.Now;
 				AppendLog($"{LogVerb[action]} {appsCount} {TextApplications(appsCount)}... Started at {dateTimeStart.ToLongDateString()} {dateTimeStart.ToLongTimeString()} ({TimeZoneInfo.Local})\n");
-				AppendLog($"Device: {device} (API level {versionSdk})\n");
+				AppendLog($"Device: {(deviceSerialEmpty ? "(default)" : device)} (API level {versionSdk})\n");
 				void EndLog(int errorCount = 0) {
 					DateTime dateTimeEnd = DateTime.Now;
 					AppendLog($"Action done at {dateTimeEnd.ToLongDateString()} {dateTimeEnd.ToLongTimeString()} ({TimeZoneInfo.Local})\nElapsed: {dateTimeEnd - dateTimeStart}\n" +
