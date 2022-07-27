@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -17,16 +18,28 @@ namespace CarrierAppDeleter.Forms {
 				DeviceInfo d = new DeviceInfo() { Serial = serial };
 				(string path, bool isSucceeded) = GetAdbPath();
 				if (!isSucceeded) return null;
+				StringBuilder stringBuilder = new StringBuilder();
+				StringBuilder stringBuilderError = new StringBuilder();
+
 				Process sdkP = QuickAdb(path, serial, "shell getprop ro.build.version.sdk");
+				sdkP.OutputDataReceived += (object sender, DataReceivedEventArgs e) => stringBuilder.Append(e.Data);
 				sdkP.Start();
+				sdkP.BeginOutputReadLine();
 				sdkP.WaitForExit();
-				d.VersionSdk = (sdkP.ExitCode == 0) ? int.Parse(sdkP.StandardOutput.ReadLine()) : -1;
+				d.VersionSdk = (sdkP.ExitCode == 0 && int.TryParse(stringBuilder.ToString(), out int result)) ? result : -1;
 				sdkP.Dispose();
+				stringBuilder.Clear();
+
 				Process relP = QuickAdb(path, serial, "shell getprop ro.build.version.release");
+				relP.OutputDataReceived += (object sender, DataReceivedEventArgs e) => stringBuilder.Append(e.Data);
+				relP.ErrorDataReceived += (object sender, DataReceivedEventArgs e) => stringBuilderError.Append(e.Data);
 				relP.Start();
+				relP.BeginOutputReadLine();
+				relP.BeginErrorReadLine();
 				relP.WaitForExit();
-				d.VersionRelease = (relP.ExitCode == 0) ? relP.StandardOutput.ReadLine() : $"Error ({relP.StandardError.ReadToEnd()})";
+				d.VersionRelease = (relP.ExitCode == 0) ? stringBuilder.ToString() : $"Error ({stringBuilderError})";
 				relP.Dispose();
+
 				return d;
 			}
 			public string GetUserVisibleText() {
@@ -124,18 +137,31 @@ namespace CarrierAppDeleter.Forms {
 			Process process = QuickAdb(path, GetSelectedDeviceSerial(), "shell pm list packages");
 			// process.StartInfo.Arguments = $"-s \"{GetSelectedDeviceSerial().Replace("\\", "\\\\").Replace("\"", "\\\"")}\" shell pm list packages";
 			// process.StartInfo.ArgumentList = { "-s", GetSelectedDeviceSerial(), "shell", "pm list packages" };
+			StringBuilder stringBuilderError = new StringBuilder();
+			process.ErrorDataReceived += (object sender, DataReceivedEventArgs e) => {
+				stringBuilderError.AppendLine(e.Data);
+			};
+			process.OutputDataReceived += (object sender, DataReceivedEventArgs e) => {
+				string read;
+				if (e.Data == null) return;
+				read = Regex.Replace(e.Data, "^package:", "", RegexOptions.Compiled);
+				if (Regex.IsMatch(read, Properties.Settings.Default.PackageRegex, RegexOptions.None, TimeSpan.FromMilliseconds(1000)))
+					packages.Add(read);
+			};
 			process.Start();
+			process.BeginOutputReadLine();
+			process.BeginErrorReadLine();
 			process.WaitForExit();
-			string read;
+
 			// VSCode/iumでデバッグするとここで謎の文字列が混入する (Mono + ms-vscode.mono-debug + VSCodium + Ubuntu 20.04で確認済み)
 			// Content-Length: 46
 			// {"command":"threads","type":"request","seq":5}
 			// (その後に本来のstdoutが取れる)
-			while ((read = process.StandardOutput.ReadLine()) != null) {
+			/* while ((read = process.StandardOutput.ReadLine()) != null) {
 				read = Regex.Replace(read, "^package:", "", RegexOptions.Compiled);
 				if (Regex.IsMatch(read, Properties.Settings.Default.PackageRegex, RegexOptions.None, TimeSpan.FromMilliseconds(1000)))
 					packages.Add(read);
-			}
+			} */
 			CheckedListBox.ObjectCollection objectCollection = new CheckedListBox.ObjectCollection(checkedListBoxApplications);
 			CheckedListBox.CheckedItemCollection checkedItems = checkedListBoxApplications.CheckedItems;
 			List<string> checkedPackages = new List<string>();
@@ -149,7 +175,10 @@ namespace CarrierAppDeleter.Forms {
 				};
 			}));
 			if (process.ExitCode != 0) {
-				Invoke((MethodInvoker)(() => ShowError($"Failed to get list of packages:\n{process.StandardError.ReadToEnd()}")));
+				string str = stringBuilderError.ToString();
+				foreach (string newLine in new string[] { "\r\n", "\n", "\r", "\r\n"})
+					if (str.EndsWith(newLine)) str = str.Substring(0, str.Length - newLine.Length);
+				Invoke((MethodInvoker)(() => ShowError($"Failed to get list of packages:\n{str}")));
 			} else if (packages.Count == 0) {
 				Invoke((MethodInvoker)(() => MessageBox.Show("No applications were found", "Infomation", MessageBoxButtons.OK, MessageBoxIcon.Information)));
 			}
@@ -184,10 +213,12 @@ namespace CarrierAppDeleter.Forms {
 			Process process = QuickAdb(path, null, "devices");
 			// process.StartInfo.Arguments = "devices";
 			// process.StartInfo.ArgumentList = { "devices" };
+			process.OutputDataReceived += (object sender, DataReceivedEventArgs e) => {
+				if (!string.IsNullOrEmpty(e.Data) && !string.IsNullOrWhiteSpace(e.Data)) devices.Add(e.Data);
+			};
 			process.Start();
+			process.BeginOutputReadLine();
 			process.WaitForExit();
-			string read;
-			if (process.ExitCode == 0) while ((read = process.StandardOutput.ReadLine()) != null) devices.Add(read);
 #else
 			string stdoutFilePath = Path.GetTempFileName();
 			string stderrFilePath = Path.GetTempFileName();
@@ -267,11 +298,11 @@ namespace CarrierAppDeleter.Forms {
 
 		string comboBoxDevicePrev = null;
 		private void comboBoxDevice_GotFocus(object sender, EventArgs e) {
-			comboBoxDevicePrev = comboBoxDevice.Text;
+			comboBoxDevicePrev = GetSelectedDeviceSerial();
 		}
 		private void comboBoxDevice_SelectionChangeCommittedOrLeave(object sender, EventArgs e) {
-			if (!comboBoxDevice.Text.Equals(comboBoxDevicePrev)) {
-				comboBoxDevicePrev = comboBoxDevice.Text;
+			if (!GetSelectedDeviceSerial().Equals(comboBoxDevicePrev)) {
+				comboBoxDevicePrev = GetSelectedDeviceSerial();
 				// LostFocus時にモーダルダイアログ(MessageBox.Show()やForm#ShowDialog()など)を出すとcatch不可なNREで落ちるので注意 (Mono 6.12.0.182 で確認)
 				// Unhandled Exception:
 				// System.NullReferenceException: Object reference not set to an instance of an object
@@ -383,10 +414,13 @@ namespace CarrierAppDeleter.Forms {
 				toolStripProgressBar.Step = 1;
 				toolStripStatusLabelStatus.Text = $"{LogVerb[action]} {appsCount} {TextApplications(appsCount)}...";
 
+				StringBuilder stringBuilder = new StringBuilder();
 				Process sdkP = QuickAdb(path, device, "shell getprop ro.build.version.sdk");
+				sdkP.OutputDataReceived += (object sender2, DataReceivedEventArgs e2) => stringBuilder.Append(e2.Data);
 				sdkP.Start();
+				sdkP.BeginOutputReadLine();
 				sdkP.WaitForExit();
-				int versionSdk = (sdkP.ExitCode == 0) ? int.Parse(sdkP.StandardOutput.ReadLine()) : -1;
+				int versionSdk = (sdkP.ExitCode == 0 && int.TryParse(stringBuilder.ToString(), out int result)) ? result : -1;
 				sdkP.Dispose();
 
 				if (!string.IsNullOrEmpty(textBoxLog.Text)) AppendLog("===============\n");
@@ -407,7 +441,7 @@ namespace CarrierAppDeleter.Forms {
 						const string str = "Android 1.2 or earlier doesn't support disable applications";
 						ShowError(str);
 						toolStripStatusLabelStatus.Text = "Done with error";
-						AppendLog($"Error: {str}");
+						AppendLog($"Error: {str}\n");
 						EndLog();
 						return;
 					}
@@ -426,10 +460,17 @@ namespace CarrierAppDeleter.Forms {
 							AppendLog($"=> {LogVerb[action]} '{apps[i]}'...");
 						}));
 						Process p = QuickAdb(path, device, $"shell pm {Command[action]} {apps[i]}");
+
+						StringBuilder stringBuilder2 = new StringBuilder();
+						StringBuilder stringBuilderError2 = new StringBuilder();
+						p.OutputDataReceived += (object sender2, DataReceivedEventArgs e2) => stringBuilder2.AppendLine(e2.Data);
+						p.ErrorDataReceived += (object sender2, DataReceivedEventArgs e2) => stringBuilderError2.AppendLine(e2.Data);
 						p.Start();
+						p.BeginOutputReadLine();
+						p.BeginErrorReadLine();
 						p.WaitForExit();
-						string stdout = p.StandardOutput.ReadToEnd();
-						string stderr = p.StandardError.ReadToEnd();
+						string stdout = stringBuilder.ToString();
+						string stderr = stringBuilderError2.ToString();
 						Regex regex = new Regex("([ \t]*Killed[ \t]+pm.*$|^Failure(\r\n|\r|\n)$|^Error: )", RegexOptions.Compiled | RegexOptions.Singleline, TimeSpan.FromMilliseconds(1000));
 						// Console.WriteLine(stdout);
 						// Console.Error.WriteLine(stderr);
