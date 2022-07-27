@@ -475,7 +475,7 @@ namespace CarrierAppDeleter.Forms {
 						// Console.WriteLine(stdout);
 						// Console.Error.WriteLine(stderr);
 						bool errorPrintedToStdout = regex.IsMatch(stdout);
-						if (p.ExitCode != 0 || !string.IsNullOrEmpty(stderr) || errorPrintedToStdout) {
+						if (p.ExitCode != 0 || !(string.IsNullOrEmpty(stderr) || string.IsNullOrWhiteSpace(stderr)) || errorPrintedToStdout) {
 							errorCount++;
 							string errorSource = errorPrintedToStdout ? stdout : stderr;
 							Invoke((MethodInvoker)(() => AppendLog($" error: {errorSource}" +
