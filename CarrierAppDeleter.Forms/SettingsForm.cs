@@ -91,7 +91,7 @@ namespace CarrierAppDeleter.Forms {
 			(string path, bool isExists) = IsAdbExists(true);
 			if (!dontAsk && isExists && (MessageBox.Show($"It seems ADB already exists at '{path}'.\nDo you want to continue anyway?", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No)) return;
 			try {
-				Utils.SetupAndroidSdk();
+				Utils.SetupAndroidSdk(default, dontAsk);
 				checkBoxAutoDetectAdb.Checked = true;
 			} catch (Exception ex) {
 				if (MessageBox.Show($"Failed to setup ADB:\n{ex.Message}", "Error", MessageBoxButtons.RetryCancel, MessageBoxIcon.Error) == DialogResult.Retry) buttonSetupAdb_Click(sender, e, true);

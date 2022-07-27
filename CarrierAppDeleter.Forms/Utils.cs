@@ -13,7 +13,7 @@ using System.Runtime.InteropServices;
 
 namespace CarrierAppDeleter.Forms {
 	static class Utils {
-		internal static void SetupAndroidSdk(string dest = null, bool force = false) {
+		internal static void SetupAndroidSdk(string dest = null, bool dontAsk = false) {
 			void ensureNotExists(string path, bool allowEmptyDirectory = true) {
 				if (!allowEmptyDirectory && Directory.Exists(path)) throw new InvalidOperationException($"The directory '{path}' already exists");
 				else if (Directory.Exists(path) && Directory.EnumerateFileSystemEntries(path).Any()) throw new InvalidOperationException($"The directory '{path}' is not empty");
@@ -28,6 +28,7 @@ namespace CarrierAppDeleter.Forms {
 			if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) downloadAddress = "https://dl.google.com/android/repository/platform-tools-latest-darwin.zip";
 			string tempFilePath = Path.GetTempFileName();  // mktemp
 			try {
+				if (!dontAsk && MessageBox.Show($"Download Google Android SDK Platform-Tools?\n\nIt will be extracted to {dest}", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
 				ensureNotExists(Path.Combine(dest, "platform-tools"));
 				System.Net.WebClient wc = new System.Net.WebClient();
 				wc.DownloadFile(downloadAddress, tempFilePath);
@@ -46,6 +47,7 @@ namespace CarrierAppDeleter.Forms {
 					zipArchive.Dispose();
 				}
 			} finally {
+				Console.WriteLine($"deleted");
 				File.Delete(tempFilePath);
 			}
 		}
