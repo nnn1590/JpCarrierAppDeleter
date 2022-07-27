@@ -48,16 +48,7 @@ namespace CarrierAppDeleter
                 Directory.Delete(dlpath);
                 File.Delete(dlpath + ".zip");
             }
-            ProcessStartInfo processStartInfo = new ProcessStartInfo(path, "kill-server") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = false, RedirectStandardError = false };
-            
-            var t =Process.Start(processStartInfo);
-            t.WaitForExit();
-            ProcessStartInfo processStartInfo1 = new ProcessStartInfo(path, "shell exit") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = false, RedirectStandardError = false };
-            t.Dispose();
 
-            t = Process.Start(processStartInfo1);
-            t.WaitForExit();
-            t.Dispose();
             InitializeComponent();
         }
 
@@ -148,26 +139,103 @@ namespace CarrierAppDeleter
         {
         }
 
-        private void Button_Click_2(object sender, RoutedEventArgs e)
+        string[] carrier = new string[] { "kddi", "auone", "docomo", "ntt", "rakuten", "yahoo", "softbank" };
+        void loadList()
         {
+            AppList.Children.Clear();
             var path = System.IO.Path.Combine(Directory.GetParent(Assembly.GetExecutingAssembly().Location).FullName, "platform-tools", "adb.exe");
             Process process = new Process();
-            string addWord="";
-            if(DeviceComboBox.Items.Count > 0&& DeviceComboBox.SelectedIndex!=-1)
+            string addWord = "";
+            if (DeviceComboBox.Items.Count > 0 && DeviceComboBox.SelectedIndex != -1)
             {
-                addWord="-s " + DeviceComboBox.SelectedItem.ToString()+ " ";
+                addWord = "-s " + DeviceComboBox.SelectedItem.ToString() + " ";
             }
-            process.StartInfo = new ProcessStartInfo(path, addWord+"shell pm list package -s softbank kddi auone docomo ntt rakuten yahoo") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            string addWord2 = "";
+            if (R_Disabled.IsChecked == true)
+            {
+                addWord2 = "-e ";
+            }
+            if (!R_Repair.IsChecked == true)
+            {
+                process.StartInfo = new ProcessStartInfo(path, addWord + "shell pm list package -s " + addWord2) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
 
-            process.OutputDataReceived += Process_OutputDataReceived1; 
-            process.ErrorDataReceived += Process_ErrorDataReceived1;
-            process.EnableRaisingEvents = true;
+                process.OutputDataReceived += Process_OutputDataReceived1;
+                process.ErrorDataReceived += Process_ErrorDataReceived1;
+                process.EnableRaisingEvents = true;
 
-            process.Exited += Process_Exited;
-            AppList.Children.Clear();
-            process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
+                process.Exited += Process_Exited;
+
+                process.Start();
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+            }
+            else
+            {
+                Task task = new Task(() =>
+                {
+                    try
+                    {
+
+                        for (int i = 0; i < carrier.Length; i++)
+                        {
+                            ProcessStartInfo pf = new ProcessStartInfo(path, addWord + "shell pm list package -s " + carrier[i]) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+
+                            var t = Process.Start(pf);
+                            t.WaitForExit();
+
+                            string readword = t.StandardOutput.ReadToEnd();
+                            if(string.IsNullOrEmpty(readword) || string.IsNullOrWhiteSpace(readword))
+                            {
+                                continue;
+                            }
+                            string[] installed = readword.Replace("package:", "").Replace("\r", "").Split('\n');
+                           
+                            this.Dispatcher.Invoke((Action)(() =>
+                            {
+                                Log.Text += readword;
+                                Log.Text += t.StandardError.ReadToEnd();
+                                Log.ScrollToEnd();
+
+                            }));
+                            t.Dispose();
+                            pf = new ProcessStartInfo(path, addWord + "shell pm list package -s -u " + carrier[i]) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+
+                            t = Process.Start(pf);
+                            t.WaitForExit();
+                            readword = t.StandardOutput.ReadToEnd();
+                            string[] all = readword.Replace("package:", "").Replace("\r", "").Split('\n');
+
+                            this.Dispatcher.Invoke((Action)(() =>
+                            {
+                                for (int k = 0; k < all.Length; k++)
+                                {
+                                    if (!installed.Contains(all[k])&&!string.IsNullOrEmpty(all[k])&&!string.IsNullOrWhiteSpace(all[k]))
+                                    {
+                                        AppList.Children.Add(new CheckBox() { Content = all[k], IsChecked = false });
+
+                                    }
+                                }
+                                Log.Text += readword;
+                                Log.Text += t.StandardError.ReadToEnd();
+                                Log.ScrollToEnd();
+                            }));
+                            t.Dispose();
+                        }
+                    }
+                    catch
+                    {
+
+                    }
+                
+
+
+                });
+                task.Start();
+            }
+        }
+        private void Button_Click_2(object sender, RoutedEventArgs e)
+        {
+            loadList();
         }
 
         private void Process_ErrorDataReceived1(object sender, DataReceivedEventArgs e)
@@ -187,7 +255,20 @@ namespace CarrierAppDeleter
             {
                 this.Dispatcher.Invoke((Action)(() =>
                 {
-                    AppList.Children.Add(new CheckBox() { Content = e.Data.Replace("package:",""),IsChecked=true });
+                    bool add = false;
+                    for(int i = 0;i< carrier.Length; i++)
+                    {
+                        if(e.Data.Contains(carrier[i]))
+                        {
+                            add = true;
+                            break;
+                        }
+                    }
+                    if (add)
+                    {
+                        AppList.Children.Add(new CheckBox() { Content = e.Data.Replace("package:", ""), IsChecked = true });
+
+                    }
                     Log.Text += e.Data + "\n";
                 }));
             }
@@ -200,18 +281,18 @@ namespace CarrierAppDeleter
             {
                 if (DisasterApps.Contains(((CheckBox)AppList.Children[i]).Content))
                 {
-                    ((CheckBox)AppList.Children[i]).IsChecked = false;
+                    ((CheckBox)AppList.Children[i]).IsChecked = CheckAdd;
                 }
             }
         }
-
+        bool CheckAdd = false;
         private void Button_Click_4(object sender, RoutedEventArgs e)
         {
             for (int i = 0; i < AppList.Children.Count; i++)
             {
                 if (WiFiApps.Contains(((CheckBox)AppList.Children[i]).Content))
                 {
-                    ((CheckBox)AppList.Children[i]).IsChecked = false;
+                    ((CheckBox)AppList.Children[i]).IsChecked = CheckAdd;
                 }
             }
         }
@@ -238,8 +319,7 @@ namespace CarrierAppDeleter
 
         private void Button_Click_7(object sender, RoutedEventArgs e)
         {
-            DeleteButton.IsEnabled = false;
-            DeleteButton.Content = "実行中";
+
             var RemoveApps = new List<string>();
             string RaS = "";
             for(int i = 0;i< AppList.Children.Count; i++)
@@ -257,6 +337,13 @@ namespace CarrierAppDeleter
                     return;
                 }
             }
+            else
+            {
+                return;
+            }
+
+            DeleteButton.IsEnabled = false;
+            DeleteButton.Content = "実行中";
             var path = System.IO.Path.Combine(Directory.GetParent(Assembly.GetExecutingAssembly().Location).FullName, "platform-tools", "adb.exe");
             bool backup = (bool)BackupCheckBox.IsChecked;
             object selectedDevice = DeviceComboBox.SelectedItem;
@@ -277,7 +364,7 @@ namespace CarrierAppDeleter
                     {
                         addCommad = "-s " + selectedDevice + " ";
                     }
-                    ProcessStartInfo pf = new ProcessStartInfo(path, addCommad+"shell pm uninstall -k --user 0 " + RemoveApps[i]) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+                    ProcessStartInfo pf = new ProcessStartInfo(path, addCommad+ "shell pm uninstall -k --user 0 " + RemoveApps[i]) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
                     var t = Process.Start(pf);
                     t.WaitForExit();
 
@@ -308,8 +395,11 @@ namespace CarrierAppDeleter
 
                     }
                     DeleteButton.IsEnabled = true;
+
                     DeleteButton.Content = "削除を実行";
                     ProgressBar1.Value = 0;
+
+                    loadList();
                 }));
 
                 //    if (backup)
@@ -419,6 +509,229 @@ namespace CarrierAppDeleter
             });
             task.Start();
             
+        }
+
+        private void Button_Click_8(object sender, RoutedEventArgs e)
+        {
+
+
+            var RemoveApps = new List<string>();
+            string RaS = "";
+            for (int i = 0; i < AppList.Children.Count; i++)
+            {
+                if ((bool)((CheckBox)AppList.Children[i]).IsChecked)
+                {
+                    RemoveApps.Add(((CheckBox)AppList.Children[i]).Content.ToString());
+
+                }
+            }
+            if (RemoveApps.Count > 0)
+            {
+                if (MessageBox.Show(RemoveApps.Count + "個のアプリが無効化されますが実行しますか\n\n", "警告", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                {
+                    return;
+                }
+            }
+            else
+            {
+                return;
+            }
+
+            DisableButton.IsEnabled = false;
+
+            DisableButton.Content = "実行中";
+            var path = System.IO.Path.Combine(Directory.GetParent(Assembly.GetExecutingAssembly().Location).FullName, "platform-tools", "adb.exe");
+            bool backup = (bool)BackupCheckBox.IsChecked;
+            object selectedDevice = DeviceComboBox.SelectedItem;
+            ProgressBar1.Maximum = RemoveApps.Count;
+
+            Task task = new Task(() =>
+            {
+                for (int i = 0; i < RemoveApps.Count; i++)
+                {
+                    this.Dispatcher.Invoke((Action)(() =>
+                    {
+                        Log.Text += RemoveApps[i] + "を無効化します。\n";
+                        Log.ScrollToEnd();
+
+                    }));
+                    string addCommad = "";
+                    if (selectedDevice != null && selectedDevice is string && !string.IsNullOrEmpty((string)selectedDevice) && !string.IsNullOrWhiteSpace((string)selectedDevice))
+                    {
+                        addCommad = "-s " + selectedDevice + " ";
+                    }
+                    ProcessStartInfo pf = new ProcessStartInfo(path, addCommad + "shell pm disable-user --user 0 " + RemoveApps[i]) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+                    var t = Process.Start(pf);
+                    t.WaitForExit();
+
+                    string readword = t.StandardOutput.ReadToEnd();
+                    this.Dispatcher.Invoke((Action)(() =>
+                    {
+                        if (readword.Contains("disabled-user"))
+                        {
+                            ProgressBar1.Value++;
+                        }
+                        Log.Text += readword;
+                        Log.Text += t.StandardError.ReadToEnd();
+                        Log.ScrollToEnd();
+
+                    }));
+                    t.Dispose();
+                }
+                this.Dispatcher.Invoke((Action)(() =>
+                {
+                    if (ProgressBar1.Value == ProgressBar1.Maximum)
+                    {
+                        MessageBox.Show("指定されたすべてのアプリを無効化しました。");
+
+                    }
+                    else
+                    {
+                        MessageBox.Show((ProgressBar1.Maximum - ProgressBar1.Value) + "個のアプリを無効化できませんでした。");
+
+                    }
+                    DisableButton.IsEnabled = true;
+
+                    DisableButton.Content = "無効化を実行";
+                    ProgressBar1.Value = 0;
+                    loadList();
+
+                }));
+
+
+            });
+            task.Start();
+        }
+
+        private void R_Repair_Checked(object sender, RoutedEventArgs e)
+        {
+            RepairButton.Visibility = Visibility.Visible;
+            DeleteButton.Visibility = Visibility.Hidden;
+            DisableButton.Visibility = Visibility.Hidden;
+            AppList.Children.Clear();
+            WiFiButton.Content = "Wi-Fiアプリを追加する";
+            DisasterButton.Content = "防災系アプリを追加する";
+
+            CheckAdd = true;
+        }
+
+        private void R_Uninstall_Checked(object sender, RoutedEventArgs e)
+        {
+            DeleteButton.Visibility = Visibility.Visible;
+            DisableButton.Visibility = Visibility.Hidden;
+            RepairButton.Visibility = Visibility.Hidden;
+            AppList.Children.Clear();
+            CheckAdd = false;
+            DisasterButton.Content = "防災系アプリを除外する";
+            WiFiButton.Content = "Wi-Fiアプリを除外する";
+
+        }
+
+        private void R_Disabled_Checked(object sender, RoutedEventArgs e)
+        {
+            DisableButton.Visibility = Visibility.Visible;
+            DeleteButton.Visibility = Visibility.Hidden;
+            RepairButton.Visibility = Visibility.Hidden;
+            AppList.Children.Clear();
+            WiFiButton.Content = "Wi-Fiアプリを除外する";
+            DisasterButton.Content = "防災系アプリを除外する";
+            CheckAdd = false;
+        }
+
+        private void Window_Initialized(object sender, EventArgs e)
+        {
+            R_Uninstall.IsChecked = true;
+        }
+
+        private void RepairButton_Click(object sender, RoutedEventArgs e)
+        {
+
+            var RemoveApps = new List<string>();
+            string RaS = "";
+            for (int i = 0; i < AppList.Children.Count; i++)
+            {
+                if ((bool)((CheckBox)AppList.Children[i]).IsChecked)
+                {
+                    RemoveApps.Add(((CheckBox)AppList.Children[i]).Content.ToString());
+
+                }
+            }
+            if (RemoveApps.Count > 0)
+            {
+                if (MessageBox.Show(RemoveApps.Count + "個のアプリが復元されますが実行しますか\n\n", "警告", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                {
+                    return;
+                }
+            }
+            else
+            {
+                return;
+            }
+
+            RepairButton.IsEnabled = false;
+
+            RepairButton.Content = "実行中";
+            var path = System.IO.Path.Combine(Directory.GetParent(Assembly.GetExecutingAssembly().Location).FullName, "platform-tools", "adb.exe");
+            bool backup = (bool)BackupCheckBox.IsChecked;
+            object selectedDevice = DeviceComboBox.SelectedItem;
+            ProgressBar1.Maximum = RemoveApps.Count;
+
+            Task task = new Task(() =>
+            {
+                for (int i = 0; i < RemoveApps.Count; i++)
+                {
+                    this.Dispatcher.Invoke((Action)(() =>
+                    {
+                        Log.Text += RemoveApps[i] + "を復元します。\n";
+                        Log.ScrollToEnd();
+
+                    }));
+                    string addCommad = "";
+                    if (selectedDevice != null && selectedDevice is string && !string.IsNullOrEmpty((string)selectedDevice) && !string.IsNullOrWhiteSpace((string)selectedDevice))
+                    {
+                        addCommad = "-s " + selectedDevice + " ";
+                    }
+                    ProcessStartInfo pf = new ProcessStartInfo(path, addCommad + "shell cmd package install-existing " + RemoveApps[i]) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+                    var t = Process.Start(pf);
+                    t.WaitForExit();
+
+                    string readword = t.StandardOutput.ReadToEnd();
+                    this.Dispatcher.Invoke((Action)(() =>
+                    {
+                        if (readword.Contains("installed for user"))
+                        {
+                            ProgressBar1.Value++;
+                        }
+                        Log.Text += readword;
+                        Log.Text += t.StandardError.ReadToEnd();
+                        Log.ScrollToEnd();
+
+                    }));
+                    t.Dispose();
+                }
+                this.Dispatcher.Invoke((Action)(() =>
+                {
+                    if (ProgressBar1.Value == ProgressBar1.Maximum)
+                    {
+                        MessageBox.Show("指定されたすべてのアプリを復元しました。");
+
+                    }
+                    else
+                    {
+                        MessageBox.Show((ProgressBar1.Maximum - ProgressBar1.Value) + "個のアプリを復元できませんでした。");
+
+                    }
+                    RepairButton.IsEnabled = true;
+
+                    RepairButton.Content = "復元を実行";
+                    ProgressBar1.Value = 0;
+                    loadList();
+
+                }));
+
+
+            });
+            task.Start();
         }
     }
 }
