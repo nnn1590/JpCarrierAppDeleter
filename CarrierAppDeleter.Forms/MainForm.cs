@@ -81,7 +81,15 @@ namespace CarrierAppDeleter.Forms {
 		}
 		private void settingsToolStripMenuItem_Click(object sender, EventArgs e) => new SettingsForm().ShowDialog();
 
+		private void form_Closing(object sender, FormClosingEventArgs e) {
+			if (!lastControlsStatus) {
+				e.Cancel = MessageBox.Show("Task is still running.\nDo you want to close anyway?", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes;
+			}
+		}
+
+		private bool lastControlsStatus = true;
 		private void ToggleControls(bool status, int level = 0) {
+			lastControlsStatus = status;
 			List<object> objs = new object[] {
 				// checkedListBoxApplications,
 				radioButtonAppActDisable, radioButtonAppActRestore, radioButtonAppActUninstall,
@@ -91,7 +99,7 @@ namespace CarrierAppDeleter.Forms {
 				// comboBoxDevice,
 				labelAppActions,
 				/* groupBoxApplications, */ groupBoxDevice,
-				exitToolStripMenuItem, settingsToolStripMenuItem, aboutToolStripMenuItem,
+				/* exitToolStripMenuItem, */ settingsToolStripMenuItem, /* aboutToolStripMenuItem, */
 				// fileToolStripMenuItem, helpToolStripMenuItem
 			}.ToList();
 			if (level >= 1) objs.AddRange(new object[] { checkedListBoxApplications, groupBoxApplications });
@@ -125,6 +133,15 @@ namespace CarrierAppDeleter.Forms {
 			// if (InvokeRequired) {}
 			(string path, bool isSucceeded) = GetAdbPath();
 			if (!isSucceeded) return;
+			Regex packageRegex = null;
+			isSucceeded = false;
+			try {
+				packageRegex = new Regex(Properties.Settings.Default.PackageRegex, Properties.Settings.Default.IsPackageRegexECMA ? RegexOptions.ECMAScript : RegexOptions.None, TimeSpan.FromMilliseconds(1000));
+				isSucceeded = true;
+			} catch (ArgumentException e) {
+				Invoke((MethodInvoker)(() => ShowError($"Invalid package name regex pattern.\n\n{e.Message}")));
+			}
+			if (!isSucceeded) return;
 			Invoke((MethodInvoker)(() => {
 				ResetToolStrip();
 				toolStripProgressBar.Style = ProgressBarStyle.Marquee;
@@ -145,7 +162,7 @@ namespace CarrierAppDeleter.Forms {
 				string read;
 				if (e.Data == null) return;
 				read = Regex.Replace(e.Data, "^package:", "", RegexOptions.Compiled);
-				if (Regex.IsMatch(read, Properties.Settings.Default.PackageRegex, RegexOptions.None, TimeSpan.FromMilliseconds(1000)))
+				if (packageRegex.IsMatch(read))
 					packages.Add(read);
 			};
 			process.Start();

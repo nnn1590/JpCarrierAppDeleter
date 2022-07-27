@@ -69,5 +69,17 @@ namespace CarrierAppDeleter.Forms.Properties {
 				this["PackageRegex"] = value;
 			}
 		}
+
+		[global::System.Configuration.UserScopedSettingAttribute()]
+		[global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+		[global::System.Configuration.DefaultSettingValueAttribute("False")]
+		public bool IsPackageRegexECMA {
+			get {
+				return ((bool)(this["IsPackageRegexECMA"]));
+			}
+			set {
+				this["IsPackageRegexECMA"] = value;
+			}
+		}
 	}
 }

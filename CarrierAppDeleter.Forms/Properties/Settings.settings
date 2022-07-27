@@ -14,5 +14,8 @@
 		<Setting Name="PackageRegex" Type="System.String" Scope="User">
 			<Value Profile="(Default)">docomo|ntt|auone|rakuten|kddi|softbank|yahoo</Value>
 		</Setting>
+		<Setting Name="IsPackageRegexECMA" Type="System.Boolean" Scope="User">
+			<Value Profile="(Default)">False</Value>
+		</Setting>
 	</Settings>
 </SettingsFile>

@@ -1,6 +1,9 @@
 using System;
 using System.Windows.Forms;
 using System.IO;
+using System.Drawing;
+using System.Text.RegularExpressions;
+using System.Runtime.InteropServices;
 
 namespace CarrierAppDeleter.Forms {
 	public partial class SettingsForm : Form {
@@ -11,8 +14,12 @@ namespace CarrierAppDeleter.Forms {
 		}
 
 		private void SettingsForm_Load(object sender, EventArgs e) {
-			textBoxAdbPath.Dock = DockStyle.Fill;
-			textBoxAdbPath.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+			foreach (TextBox textBox in new TextBox[] { textBoxAdbPath, textBoxRegex }) {
+				textBox.Size = new Size(1, 1);
+				textBox.Dock = DockStyle.Fill;
+				textBox.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+			}
+			// ErrorProvider errorProvider = new ErrorProvider();
 			LoadSettings();
 		}
 
@@ -38,17 +45,27 @@ namespace CarrierAppDeleter.Forms {
 
 			(string path, bool isFound) = IsAdbExists(true);
 			textBoxUsingThisAdb.Text = isFound ? $"ADB found: {path}" : "ADB not found";
+
+			CheckRegex(null, null);
 		}
 
 		private void LoadSettings() {
 			checkBoxAutoDetectAdb.Checked = Properties.Settings.Default.AutoDetectAdb;
 			textBoxAdbPath.Text = Properties.Settings.Default.AdbCustomPath;
+
+			checkBoxECMARegex.Checked = Properties.Settings.Default.IsPackageRegexECMA;
+			textBoxRegex.Text = Properties.Settings.Default.PackageRegex;
+
 			UpdateControls();
 		}
 
 		private void SaveSettings() {
 			Properties.Settings.Default.AutoDetectAdb = checkBoxAutoDetectAdb.Checked;
 			Properties.Settings.Default.AdbCustomPath = textBoxAdbPath.Text;
+
+			Properties.Settings.Default.IsPackageRegexECMA = checkBoxECMARegex.Checked;
+			Properties.Settings.Default.PackageRegex = textBoxRegex.Text;
+
 			Properties.Settings.Default.Save();
 		}
 
@@ -91,10 +108,28 @@ namespace CarrierAppDeleter.Forms {
 			(string path, bool isExists) = IsAdbExists(true);
 			if (!dontAsk && isExists && (MessageBox.Show($"It seems ADB already exists at '{path}'.\nDo you want to continue anyway?", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No)) return;
 			try {
-				Utils.SetupAndroidSdk(default, dontAsk);
-				checkBoxAutoDetectAdb.Checked = true;
+				(string dest, bool isSucceeded) = Utils.SetupAndroidSdk(default, dontAsk);
+				if (isSucceeded) {
+					checkBoxAutoDetectAdb.Checked = false;
+					textBoxAdbPath.Text = $"{dest}/platform-tools/adb" + (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : null);
+				}
 			} catch (Exception ex) {
 				if (MessageBox.Show($"Failed to setup ADB:\n{ex.Message}", "Error", MessageBoxButtons.RetryCancel, MessageBoxIcon.Error) == DialogResult.Retry) buttonSetupAdb_Click(sender, e, true);
+			}
+		}
+
+		private void buttonResetRegex_Click(object sender, EventArgs e) {
+			textBoxRegex.Text = (string)Properties.Settings.Default.Properties["PackageRegex"].DefaultValue;
+			// boolへのキャストではInvalidCastExceptionが発生してしまう
+			checkBoxECMARegex.Checked = bool.Parse((string)Properties.Settings.Default.Properties["IsPackageRegexECMA"].DefaultValue);
+		}
+
+		private void CheckRegex(object sender, EventArgs e) {
+			try {
+				new Regex(textBoxRegex.Text, checkBoxECMARegex.Checked ? RegexOptions.ECMAScript : RegexOptions.None);
+				textBoxRegexChecker.Text = "Valid regex pattern";
+			} catch (ArgumentException ex) {
+				textBoxRegexChecker.Text = $"Invalid regex pattern:\n{ex.Message}";
 			}
 		}
 	}

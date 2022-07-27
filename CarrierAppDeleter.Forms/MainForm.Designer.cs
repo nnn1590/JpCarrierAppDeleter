@@ -473,6 +473,7 @@ namespace CarrierAppDeleter.Forms {
 			this.Name = "FormCarrierAppDeleter";
 			this.Text = "CarrierAppDeleter";
 			this.Load += new System.EventHandler(this.MainForm_Load);
+			this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(form_Closing);
 			this.tableLayoutPanelDevice.ResumeLayout(false);
 			this.tableLayoutPanelDevice.PerformLayout();
 			this.groupBoxDevice.ResumeLayout(false);
